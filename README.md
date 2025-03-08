@@ -4,7 +4,12 @@
 
 This repo contains 2 folders:
 
-1. `/monolith`: A Rails application demonstrating how to send events to SNS.
+1. `/monolith`: A Rails application (Publisher) demonstrating how to send events to SNS.
 2. `/microservices`: A consumer who receives events from SNS and process events. A consumers consists of SQS and Lambda.
 
-This repo doesn't contain message broker (SNS). You can use any IaC tools (CDK, Terraform) to create one.
+This repo doesn't contain message broker (SNS). You can use any IaC tool (CDK, Terraform) to create one.
+
+# Publisher
+
+
+# Consumer
