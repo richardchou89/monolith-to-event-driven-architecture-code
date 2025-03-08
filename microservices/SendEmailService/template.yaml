@@ -1,18 +1,91 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  SendEmailService
+  SendEmail
   
-  Sample SAM Template for SendEmailService
+  Sample SAM Template for SendEmail
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
-    Timeout: 5
+    Timeout: 30
     MemorySize: 128
 
+Parameters:
+  DefaultVPCSubnetIDs:
+    Type: "List<AWS::EC2::Subnet::Id>"
+    Description: "List of Subnet IDs for the Lambda function to access resources within a VPC"
+
+  EBEC2SecurityGroupIDs:
+    Type: "List<AWS::EC2::SecurityGroup::Id>"
+    Description: "List of Security Group IDs for the Lambda function to control network access"
+  
+  DBHost:
+    Type: String
+    Description: "Database host endpoint (e.g., RDS endpoint or IP address)"
+
+  DBUser:
+    Type: String
+    Description: "Database username"
+  
+  DBPass:
+    Type: String
+    Description: "Database password"
+  
+  DBName:
+    Type: String
+    Description: "Database name"
+
+  DBPort:
+    Type: String
+    Description: "Database port"
+
+  DBSSLMode:
+    Type: String
+    Description: "Database SSL mode"
+
+  SNSTopicArn:
+    Type: String
+    Description: ARN of the existing SNS topic
+
+  Env:
+    Type: String
+    Description: Env
+
 Resources:
-  HelloWorldFunction:
+  GoMicroservice1Queue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "send-email-${Env}-queue"
+
+  GoMicroservice1Subscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: sqs
+      Endpoint: !GetAtt GoMicroservice1Queue.Arn
+      TopicArn: !Ref SNSTopicArn
+      RawMessageDelivery: true
+      FilterPolicy:
+        eventType:
+          - 'send_email'
+
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref GoMicroservice1Queue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: "SQS:SendMessage"
+            Resource: !GetAtt GoMicroservice1Queue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref SNSTopicArn
+
+  GoMicroserviceFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Metadata:
       BuildMethod: go1.x
@@ -23,25 +96,30 @@ Resources:
       Architectures:
         - x86_64
       Events:
-        CatchAll:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+        SQSTrigger:
+          Type: SQS
           Properties:
-            Path: /hello
-            Method: GET
-      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+            Queue: !GetAtt GoMicroservice1Queue.Arn
+            BatchSize: 10  # Number of messages to process at once
+      Architectures:
+        - x86_64
+      VpcConfig:
+        SecurityGroupIds: !Ref EBEC2SecurityGroupIDs
+        SubnetIds: !Ref DefaultVPCSubnetIDs
+      Environment:
         Variables:
-          PARAM1: VALUE
+          DB_HOST: !Ref DBHost       # Use the parameter here
+          DB_USER: !Ref DBUser
+          DB_PASS: !Ref DBPass
+          DB_NAME: !Ref DBName
+          DB_PORT: !Ref DBPort
+          DB_SSL_MODE: !Ref DBSSLMode
+          ENV: !Ref Env
 
 Outputs:
-  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
-  # Find out more about other implicit resources you can reference within SAM
-  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
-  HelloWorldAPI:
-    Description: "API Gateway endpoint URL for Prod environment for First Function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
-  HelloWorldFunction:
+  GoMicroserviceFunction:
     Description: "First Lambda Function ARN"
-    Value: !GetAtt HelloWorldFunction.Arn
-  HelloWorldFunctionIamRole:
+    Value: !GetAtt GoMicroserviceFunction.Arn
+  GoMicroserviceFunctionIamRole:
     Description: "Implicit IAM Role created for Hello World function"
-    Value: !GetAtt HelloWorldFunctionRole.Arn
+    Value: !GetAtt GoMicroserviceFunctionRole.Arn
